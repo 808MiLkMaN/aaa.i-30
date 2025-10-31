@@ -320,3 +320,43 @@ Remember: This is YOUR platform now. You control everything!
 ---
 
 **Made specifically for you by Claude** 🚀
+
+## Android & Windows App Installation
+
+Your platform is a **PWA (Progressive Web App)** which means it can be installed like a native app!
+
+### Install on Android:
+1. Open your website in Chrome
+2. Tap "Install App" when prompted
+3. Or: Menu > Add to Home screen
+4. App appears on home screen!
+
+### Install on Windows:
+1. Open your website in Chrome/Edge
+2. Click the install icon in address bar
+3. Click "Install"
+4. App opens in standalone window!
+
+### Install on iPhone:
+1. Open in Safari
+2. Tap Share button
+3. Add to Home Screen
+
+**Full instructions in `INSTALL-APPS.md`**
+
+### Generate App Icons:
+```bash
+# Create your logo (512x512px)
+# Then use https://realfavicongenerator.net
+# Download and replace files in public/ folder
+```
+
+Icons needed:
+- icon-72x72.png
+- icon-96x96.png
+- icon-128x128.png
+- icon-144x144.png
+- icon-152x152.png
+- icon-192x192.png
+- icon-384x384.png
+- icon-512x512.png
