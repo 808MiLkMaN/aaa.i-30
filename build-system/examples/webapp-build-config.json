@@ -1,0 +1,72 @@
+{
+  "name": "Web Application Build",
+  "version": "1.0.0",
+  "type": "webapp",
+  "buildDir": "./build",
+  "tempDir": "./.temp",
+  "parallelism": 4,
+  "continueOnError": false,
+  "agents": [
+    {
+      "id": "deps",
+      "type": "webapp-deps-install",
+      "enabled": true,
+      "priority": "critical",
+      "config": {}
+    },
+    {
+      "id": "lint",
+      "type": "webapp-lint",
+      "enabled": true,
+      "priority": "normal",
+      "dependencies": ["deps"],
+      "config": {}
+    },
+    {
+      "id": "typescript",
+      "type": "webapp-typescript-build",
+      "enabled": true,
+      "priority": "high",
+      "dependencies": ["deps"],
+      "config": {}
+    },
+    {
+      "id": "build",
+      "type": "webapp-nextjs-build",
+      "enabled": true,
+      "priority": "high",
+      "dependencies": ["deps", "typescript"],
+      "config": {
+        "outputDir": "dist"
+      }
+    },
+    {
+      "id": "test",
+      "type": "webapp-test",
+      "enabled": true,
+      "priority": "normal",
+      "dependencies": ["deps"],
+      "config": {}
+    },
+    {
+      "id": "validate",
+      "type": "test-build-validation",
+      "enabled": true,
+      "priority": "normal",
+      "dependencies": ["build"],
+      "config": {}
+    },
+    {
+      "id": "security",
+      "type": "test-security-scan",
+      "enabled": true,
+      "priority": "normal",
+      "dependencies": ["build"],
+      "config": {}
+    }
+  ],
+  "global": {
+    "environment": "production",
+    "nodeVersion": "20.x"
+  }
+}

@@ -1,0 +1,68 @@
+name: 3D Game Build Pipeline
+version: 1.0.0
+type: game3d
+buildDir: ./build
+tempDir: ./.temp
+parallelism: 2
+continueOnError: false
+
+agents:
+  - id: deps
+    type: shared-dependency-resolution
+    enabled: true
+    priority: critical
+    config: {}
+
+  - id: assets
+    type: shared-asset-processing
+    enabled: true
+    priority: high
+    dependencies:
+      - deps
+    config:
+      textures:
+        compress: true
+        format: webp
+        quality: 85
+        generateMipmaps: true
+      models:
+        optimize: true
+        format: gltf
+        compression: draco
+      audio:
+        compress: true
+        format: ogg
+        bitrate: 128
+
+  - id: build-windows
+    type: game3d-unity-build
+    enabled: true
+    priority: high
+    dependencies:
+      - deps
+      - assets
+    config:
+      platform: Windows
+
+  - id: build-webgl
+    type: game3d-unity-build
+    enabled: true
+    priority: high
+    dependencies:
+      - deps
+      - assets
+    config:
+      platform: WebGL
+
+  - id: validate
+    type: test-build-validation
+    enabled: true
+    priority: normal
+    dependencies:
+      - build-windows
+      - build-webgl
+    config: {}
+
+global:
+  environment: production
+  unityVersion: 2022.3.0f1

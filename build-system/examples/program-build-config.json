@@ -1,0 +1,58 @@
+{
+  "name": "Compiled Program Build",
+  "version": "1.0.0",
+  "type": "program",
+  "buildDir": "./build",
+  "tempDir": "./.temp",
+  "parallelism": 8,
+  "continueOnError": false,
+  "agents": [
+    {
+      "id": "deps",
+      "type": "shared-dependency-resolution",
+      "enabled": true,
+      "priority": "critical",
+      "config": {}
+    },
+    {
+      "id": "cmake-build",
+      "type": "program-cmake-build",
+      "enabled": true,
+      "priority": "high",
+      "dependencies": ["deps"],
+      "config": {
+        "buildType": "Release",
+        "jobs": 8
+      }
+    },
+    {
+      "id": "test",
+      "type": "test-unit",
+      "enabled": true,
+      "priority": "normal",
+      "dependencies": ["cmake-build"],
+      "config": {}
+    },
+    {
+      "id": "validate",
+      "type": "test-build-validation",
+      "enabled": true,
+      "priority": "normal",
+      "dependencies": ["cmake-build"],
+      "config": {}
+    },
+    {
+      "id": "security",
+      "type": "test-security-scan",
+      "enabled": true,
+      "priority": "low",
+      "dependencies": ["cmake-build"],
+      "config": {}
+    }
+  ],
+  "global": {
+    "environment": "production",
+    "compiler": "gcc",
+    "cxxStandard": "17"
+  }
+}
