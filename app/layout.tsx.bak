@@ -8,21 +8,8 @@ import { SessionProvider } from 'next-auth/react';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://chat.vercel.ai'),
-  title: 'AI Platform - Your Own Emergent Clone',
-  description: 'Your personal AI platform with credit-based usage. Chat with AI, manage credits, and track usage.',
-  manifest: '/manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: 'AI Platform',
-  },
-  formatDetection: {
-    telephone: false,
-  },
-  icons: {
-    icon: '/icon-192x192.png',
-    apple: '/icon-192x192.png',
-  },,
+  title: 'Next.js Chatbot Template',
+  description: 'Next.js chatbot template using the AI SDK.',
 };
 
 export const viewport = {

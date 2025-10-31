@@ -1,108 +1,136 @@
 'use client';
 
-import { startTransition, useMemo, useOptimistic, useState } from 'react';
-
-import { saveChatModelAsCookie } from '@/app/(chat)/actions';
-import { Button } from '@/components/ui/button';
+import { useEffect, useState } from 'react';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { chatModels } from '@/lib/ai/models';
-import { cn } from '@/lib/utils';
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Loader2 } from 'lucide-react';
 
-import { CheckCircleFillIcon, ChevronDownIcon } from './icons';
-import { entitlementsByUserType } from '@/lib/ai/entitlements';
-import type { Session } from 'next-auth';
+interface Model {
+  id: string;
+  modelName: string;
+  displayName: string;
+  creditsPerRequest: number;
+  category: 'fast' | 'balanced' | 'advanced' | 'custom';
+  description?: string;
+  maxTokens?: number;
+}
+
+interface ModelSelectorProps {
+  value?: string;
+  onValueChange: (value: string) => void;
+  disabled?: boolean;
+}
 
 export function ModelSelector({
-  session,
-  selectedModelId,
-  className,
-}: {
-  session: Session;
-  selectedModelId: string;
-} & React.ComponentProps<typeof Button>) {
-  const [open, setOpen] = useState(false);
-  const [optimisticModelId, setOptimisticModelId] =
-    useOptimistic(selectedModelId);
+  value,
+  onValueChange,
+  disabled,
+}: ModelSelectorProps) {
+  const [models, setModels] = useState<Model[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [userCredits, setUserCredits] = useState<number>(0);
 
-  const userType = session.user.type;
-  const { availableChatModelIds } = entitlementsByUserType[userType];
+  useEffect(() => {
+    loadModels();
+    loadCredits();
+  }, []);
 
-  const availableChatModels = chatModels.filter((chatModel) =>
-    availableChatModelIds.includes(chatModel.id),
+  async function loadModels() {
+    try {
+      const response = await fetch('/api/models');
+      const data = await response.json();
+      setModels(data.models || []);
+    } catch (error) {
+      console.error('Failed to load models:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadCredits() {
+    try {
+      const response = await fetch('/api/credits?action=balance');
+      const data = await response.json();
+      setUserCredits(data.credits || 0);
+    } catch (error) {
+      console.error('Failed to load credits:', error);
+    }
+  }
+
+  const groupedModels = models.reduce(
+    (acc, model) => {
+      if (!acc[model.category]) {
+        acc[model.category] = [];
+      }
+      acc[model.category].push(model);
+      return acc;
+    },
+    {} as Record<string, Model[]>
   );
 
-  const selectedChatModel = useMemo(
-    () =>
-      availableChatModels.find(
-        (chatModel) => chatModel.id === optimisticModelId,
-      ),
-    [optimisticModelId, availableChatModels],
-  );
+  const categoryLabels = {
+    fast: 'Fast Models',
+    balanced: 'Balanced Models',
+    advanced: 'Advanced Models',
+    custom: 'Custom Models',
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm">Loading models...</span>
+      </div>
+    );
+  }
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger
-        asChild
-        className={cn(
-          'w-fit data-[state=open]:bg-accent data-[state=open]:text-accent-foreground',
-          className,
-        )}
-      >
-        <Button
-          data-testid="model-selector"
-          variant="outline"
-          className="md:h-[34px] md:px-2"
-        >
-          {selectedChatModel?.name}
-          <ChevronDownIcon />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="min-w-[280px] max-w-[90vw] sm:min-w-[300px]"
-      >
-        {availableChatModels.map((chatModel) => {
-          const { id } = chatModel;
-
-          return (
-            <DropdownMenuItem
-              data-testid={`model-selector-item-${id}`}
-              key={id}
-              onSelect={() => {
-                setOpen(false);
-
-                startTransition(() => {
-                  setOptimisticModelId(id);
-                  saveChatModelAsCookie(id);
-                });
-              }}
-              data-active={id === optimisticModelId}
-              asChild
-            >
-              <button
-                type="button"
-                className="flex flex-row gap-2 justify-between items-center w-full group/item sm:gap-4"
-              >
-                <div className="flex flex-col gap-1 items-start">
-                  <div className="text-sm sm:text-base">{chatModel.name}</div>
-                  <div className="text-xs line-clamp-2 text-muted-foreground">
-                    {chatModel.description}
-                  </div>
-                </div>
-
-                <div className="shrink-0 text-foreground opacity-0 group-data-[active=true]/item:opacity-100 dark:text-foreground">
-                  <CheckCircleFillIcon />
-                </div>
-              </button>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex items-center gap-2">
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+        <SelectTrigger className="w-[280px]">
+          <SelectValue placeholder="Select a model" />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(groupedModels).map(([category, categoryModels]) => (
+            <SelectGroup key={category}>
+              <SelectLabel>
+                {categoryLabels[category as keyof typeof categoryLabels]}
+              </SelectLabel>
+              {categoryModels.map((model) => {
+                const canAfford = userCredits >= model.creditsPerRequest;
+                return (
+                  <SelectItem
+                    key={model.modelName}
+                    value={model.modelName}
+                    disabled={!canAfford}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span>{model.displayName}</span>
+                      <Badge
+                        variant={canAfford ? 'secondary' : 'destructive'}
+                        className="ml-2"
+                      >
+                        {model.creditsPerRequest} credits
+                      </Badge>
+                    </div>
+                  </SelectItem>
+                );
+              })}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="text-sm text-muted-foreground">
+        Balance: <strong>{userCredits}</strong> credits
+      </div>
+    </div>
   );
 }

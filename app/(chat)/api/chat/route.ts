@@ -43,6 +43,7 @@ import { fetchModels } from 'tokenlens/fetch';
 import { getUsage } from 'tokenlens/helpers';
 import type { ModelCatalog } from 'tokenlens/core';
 import type { AppUsage } from '@/lib/usage';
+import { checkAndDeductCredits, logModelUsage } from '@/lib/credits';
 
 export const maxDuration = 60;
 
@@ -146,6 +147,24 @@ export async function POST(request: Request) {
     const messagesFromDb = await getMessagesByChatId({ id });
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
 
+    // Check and deduct credits BEFORE starting the stream
+    let creditsCharged = 0;
+    const startTime = Date.now();
+    try {
+      const result = await checkAndDeductCredits({
+        userId: session.user.id,
+        modelName: selectedChatModel,
+        chatId: id,
+      });
+      creditsCharged = result.charged;
+    } catch (error) {
+      if (error instanceof ChatSDKError) {
+        throw error;
+      }
+      console.error('Credit check failed:', error);
+      throw new ChatSDKError('payment_required', 'Failed to process credits');
+    }
+
     const { longitude, latitude, city, country } = geolocation(request);
 
     const requestHints: RequestHints = {
@@ -223,6 +242,19 @@ export async function POST(request: Request) {
               const summary = getUsage({ modelId, usage, providers });
               finalMergedUsage = { ...usage, ...summary, modelId } as AppUsage;
               dataStream.write({ type: 'data-usage', data: finalMergedUsage });
+
+              // Log usage to database
+              await logModelUsage({
+                userId: session.user.id,
+                chatId: id,
+                modelUsed: selectedChatModel,
+                creditsCharged,
+                tokensInput: usage.promptTokens,
+                tokensOutput: usage.completionTokens,
+                tokensTotal: usage.totalTokens,
+                duration: Date.now() - startTime,
+                status: 'success',
+              });
             } catch (err) {
               console.warn('TokenLens enrichment failed', err);
               finalMergedUsage = usage;
