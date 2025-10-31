@@ -27,6 +27,14 @@ import {
   type DBMessage,
   type Chat,
   stream,
+  creditTransaction,
+  usageLog,
+  modelPricing,
+  subscription,
+  type CreditTransaction,
+  type UsageLog,
+  type ModelPricing,
+  type Subscription,
 } from './schema';
 import type { ArtifactKind } from '@/components/artifact';
 import { generateUUID } from '../utils';
@@ -560,6 +568,300 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
     throw new ChatSDKError(
       'bad_request:database',
       'Failed to get stream ids by chat id',
+    );
+  }
+}
+
+// Credit Management Functions
+
+export async function getUserCredits({ userId }: { userId: string }) {
+  try {
+    const [result] = await db
+      .select({ credits: user.credits })
+      .from(user)
+      .where(eq(user.id, userId));
+    return result?.credits ?? 0;
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to get user credits',
+    );
+  }
+}
+
+export async function deductCredits({
+  userId,
+  amount,
+  modelUsed,
+  tokensUsed,
+  chatId,
+}: {
+  userId: string;
+  amount: number;
+  modelUsed: string;
+  tokensUsed?: number;
+  chatId?: string;
+}) {
+  try {
+    // Start transaction
+    await db.transaction(async (tx) => {
+      // Get current credits
+      const [currentUser] = await tx
+        .select({ credits: user.credits })
+        .from(user)
+        .where(eq(user.id, userId));
+
+      if (!currentUser || currentUser.credits < amount) {
+        throw new ChatSDKError(
+          'payment_required',
+          'Insufficient credits',
+        );
+      }
+
+      // Deduct credits
+      await tx
+        .update(user)
+        .set({ credits: currentUser.credits - amount })
+        .where(eq(user.id, userId));
+
+      // Log transaction
+      await tx.insert(creditTransaction).values({
+        userId,
+        amount: -amount,
+        type: 'usage',
+        description: `Used ${modelUsed}`,
+        chatId,
+        modelUsed,
+        tokensUsed,
+      });
+    });
+  } catch (error) {
+    if (error instanceof ChatSDKError) throw error;
+    throw new ChatSDKError('bad_request:database', 'Failed to deduct credits');
+  }
+}
+
+export async function addCredits({
+  userId,
+  amount,
+  type,
+  description,
+}: {
+  userId: string;
+  amount: number;
+  type: 'purchase' | 'admin_grant' | 'refund' | 'subscription';
+  description?: string;
+}) {
+  try {
+    await db.transaction(async (tx) => {
+      // Add credits
+      await tx
+        .update(user)
+        .set({ credits: db.$sql`credits + ${amount}` })
+        .where(eq(user.id, userId));
+
+      // Log transaction
+      await tx.insert(creditTransaction).values({
+        userId,
+        amount,
+        type,
+        description,
+      });
+    });
+  } catch (error) {
+    throw new ChatSDKError('bad_request:database', 'Failed to add credits');
+  }
+}
+
+export async function getCreditTransactions({
+  userId,
+  limit = 50,
+}: {
+  userId: string;
+  limit?: number;
+}) {
+  try {
+    return await db
+      .select()
+      .from(creditTransaction)
+      .where(eq(creditTransaction.userId, userId))
+      .orderBy(desc(creditTransaction.createdAt))
+      .limit(limit);
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to get credit transactions',
+    );
+  }
+}
+
+export async function logUsage({
+  userId,
+  chatId,
+  messageId,
+  modelUsed,
+  creditsCharged,
+  tokensInput,
+  tokensOutput,
+  tokensTotal,
+  duration,
+  status = 'success',
+  errorMessage,
+}: {
+  userId: string;
+  chatId?: string;
+  messageId?: string;
+  modelUsed: string;
+  creditsCharged: number;
+  tokensInput?: number;
+  tokensOutput?: number;
+  tokensTotal?: number;
+  duration?: number;
+  status?: 'success' | 'error' | 'cancelled';
+  errorMessage?: string;
+}) {
+  try {
+    await db.insert(usageLog).values({
+      userId,
+      chatId,
+      messageId,
+      modelUsed,
+      creditsCharged,
+      tokensInput,
+      tokensOutput,
+      tokensTotal,
+      duration,
+      status,
+      errorMessage,
+    });
+  } catch (error) {
+    console.warn('Failed to log usage:', error);
+  }
+}
+
+export async function getUsageStats({
+  userId,
+  days = 30,
+}: {
+  userId: string;
+  days?: number;
+}) {
+  try {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const logs = await db
+      .select()
+      .from(usageLog)
+      .where(and(eq(usageLog.userId, userId), gte(usageLog.createdAt, since)))
+      .orderBy(desc(usageLog.createdAt));
+
+    return logs;
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to get usage stats',
+    );
+  }
+}
+
+export async function getModelPricing() {
+  try {
+    return await db
+      .select()
+      .from(modelPricing)
+      .where(eq(modelPricing.isActive, true))
+      .orderBy(asc(modelPricing.category), asc(modelPricing.creditsPerRequest));
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to get model pricing',
+    );
+  }
+}
+
+export async function getModelPricingByName({ modelName }: { modelName: string }) {
+  try {
+    const [pricing] = await db
+      .select()
+      .from(modelPricing)
+      .where(eq(modelPricing.modelName, modelName));
+    return pricing;
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to get model pricing by name',
+    );
+  }
+}
+
+export async function saveModelPricing({
+  modelName,
+  displayName,
+  creditsPerRequest,
+  creditsPerToken,
+  category,
+  description,
+  maxTokens,
+}: {
+  modelName: string;
+  displayName: string;
+  creditsPerRequest: number;
+  creditsPerToken?: string;
+  category: 'fast' | 'balanced' | 'advanced' | 'custom';
+  description?: string;
+  maxTokens?: number;
+}) {
+  try {
+    return await db.insert(modelPricing).values({
+      modelName,
+      displayName,
+      creditsPerRequest,
+      creditsPerToken,
+      category,
+      description,
+      maxTokens,
+    });
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to save model pricing',
+    );
+  }
+}
+
+export async function getUserSubscription({ userId }: { userId: string }) {
+  try {
+    const [sub] = await db
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .orderBy(desc(subscription.createdAt))
+      .limit(1);
+    return sub;
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to get user subscription',
+    );
+  }
+}
+
+export async function updateUserStripeCustomerId({
+  userId,
+  stripeCustomerId,
+}: {
+  userId: string;
+  stripeCustomerId: string;
+}) {
+  try {
+    await db
+      .update(user)
+      .set({ stripeCustomerId })
+      .where(eq(user.id, userId));
+  } catch (error) {
+    throw new ChatSDKError(
+      'bad_request:database',
+      'Failed to update stripe customer id',
     );
   }
 }
